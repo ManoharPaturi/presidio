@@ -20,9 +20,15 @@ def tags_equal(act, exp):
 
 
 @pytest.fixture(scope="module")
-def stanza_pipeline():
+def stanza_pipeline(nlp_engines):
     pytest.importorskip("stanza")
+    stanza_en = nlp_engines.get("stanza_en", None)
+    if stanza_en:
+        stanza_en.load()
+        return stanza_en.nlp["en"]
+
     import stanza
+
     lang = "en"
     stanza.download(lang)
     nlp = load_pipeline(lang)
@@ -30,9 +36,14 @@ def stanza_pipeline():
 
 
 @pytest.fixture(scope="module")
-def stanza_pipeline_de():
+def stanza_pipeline_de(nlp_engines):
     """Load a German Stanza pipeline, with the processors StanzaNlpEngine uses."""
     pytest.importorskip("stanza")
+    stanza_de = nlp_engines.get("stanza_de", None)
+    if stanza_de:
+        stanza_de.load()
+        return stanza_de.nlp["de"]
+
     import stanza
 
     lang = "de"
@@ -201,7 +212,7 @@ def test_get_tokens_with_heads_collapses_mwt_and_remaps_heads():
     assert heads == [1, 0, 1, -2, 1, 0]
 
 
-@pytest.mark.skip_engine("stanza_en")
+@pytest.mark.skip_engine("stanza_de")
 def test_spacy_stanza_german_multiword_tokens(stanza_pipeline_de):
     """Test that German multi-word tokens keep text, tokens and entities intact.
 
@@ -249,7 +260,7 @@ def test_spacy_stanza_german_multiword_tokens(stanza_pipeline_de):
     assert doc.ents[0].end_char == expected_start + len("Thomas Bergmann")
 
 
-@pytest.mark.skip_engine("stanza_en")
+@pytest.mark.skip_engine("stanza_de")
 @pytest.mark.parametrize(
     "contraction",
     ["im", "am", "zum", "zur", "beim", "vom", "ins", "ans"],
@@ -270,7 +281,7 @@ def test_spacy_stanza_german_contractions_keep_text_and_offsets(
         assert doc.text[token.idx : token.idx + len(token.text)] == token.text
 
 
-@pytest.mark.skip_engine("stanza_en")
+@pytest.mark.skip_engine("stanza_de")
 def test_spacy_stanza_german_mwt_token_indices_cover_trailing_matches(
     stanza_pipeline_de,
 ):
