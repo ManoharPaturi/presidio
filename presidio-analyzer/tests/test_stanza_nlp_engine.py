@@ -20,13 +20,8 @@ def tags_equal(act, exp):
 
 
 @pytest.fixture(scope="module")
-def stanza_pipeline(nlp_engines):
+def stanza_pipeline():
     pytest.importorskip("stanza")
-    stanza_en = nlp_engines.get("stanza_en", None)
-    if stanza_en:
-        stanza_en.load()
-        return stanza_en.nlp["en"]
-
     import stanza
 
     lang = "en"
