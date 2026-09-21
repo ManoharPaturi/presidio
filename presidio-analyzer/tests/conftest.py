@@ -2,6 +2,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List
 
+import os
 import pytest
 
 from presidio_analyzer import (
@@ -41,9 +42,12 @@ def nlp_engines(request, nlp_engine_provider) -> Dict[str, NlpEngine]:
             available_engines[f"{name}_en"] = engine_cls(
                 models=[{"lang_code": "en", "model_name": "en"}]
             )
-            available_engines[f"{name}_de"] = engine_cls(
-                models=[{"lang_code": "de", "model_name": "de"}]
-            )
+            # The German model is large; only register the engine (and run the
+            # German model tests) when explicitly opted in.
+            if os.environ.get("PRESIDIO_TEST_STANZA_DE"):
+                available_engines[f"{name}_de"] = engine_cls(
+                    models=[{"lang_code": "de", "model_name": "de"}]
+                )
         elif name == "transformers":
             available_engines[f"{name}_en"] = engine_cls(
                 models=[

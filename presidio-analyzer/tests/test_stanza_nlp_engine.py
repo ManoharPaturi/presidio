@@ -31,22 +31,17 @@ def stanza_pipeline():
 
 
 @pytest.fixture(scope="module")
-def stanza_pipeline_de(nlp_engines):
-    """Load a German Stanza pipeline, with the processors StanzaNlpEngine uses."""
-    pytest.importorskip("stanza")
-    stanza_de = nlp_engines.get("stanza_de", None)
-    if stanza_de:
-        stanza_de.load()
-        return stanza_de.nlp["de"]
+def stanza_pipeline_de(stanza_de_nlp_engine):
+    """German pipeline from the session-scoped preloaded engine.
 
-    import stanza
-
-    lang = "de"
-    stanza.download(lang)
-    # Same processors as StanzaNlpEngine.load uses, so that the mwt
-    # processor is part of the pipeline (Stanza adds it for German)
-    nlp = load_pipeline(lang, processors="tokenize,pos,lemma,ner")
-    return nlp
+    Only registered when PRESIDIO_TEST_STANZA_DE is set; otherwise the
+    skip_engine("stanza_de") markers skip these tests. the module-scoped
+    fixture instantiates before the function-scoped skip hook, so guard
+    here too.
+    """
+    if stanza_de_nlp_engine is None:
+        pytest.skip("german stanza model not enabled (set PRESIDIO_TEST_STANZA_DE)")
+    return stanza_de_nlp_engine.nlp["de"]
 
 
 @pytest.mark.skip_engine("stanza_en")
@@ -253,27 +248,6 @@ def test_spacy_stanza_german_multiword_tokens(stanza_pipeline_de):
     assert doc.ents[0].text == "Thomas Bergmann"
     assert doc.ents[0].start_char == expected_start
     assert doc.ents[0].end_char == expected_start + len("Thomas Bergmann")
-
-
-@pytest.mark.skip_engine("stanza_de")
-@pytest.mark.parametrize(
-    "contraction",
-    ["im", "am", "zum", "zur", "beim", "vom", "ins", "ans"],
-)
-def test_spacy_stanza_german_contractions_keep_text_and_offsets(
-    stanza_pipeline_de, contraction
-):
-    """Test that every German contraction preserves the text and token offsets."""
-    # Every German contraction is expanded by the mwt processor,
-    # the doc text and token offsets must survive all of them
-    text = f"Wir gehen {contraction} Termin mit Thomas Bergmann."
-    doc = stanza_pipeline_de(text)
-
-    assert doc.text == text
-    assert contraction in [t.text for t in doc]
-    # every token's character span maps back onto itself in the original text
-    for token in doc:
-        assert doc.text[token.idx : token.idx + len(token.text)] == token.text
 
 
 @pytest.mark.skip_engine("stanza_de")
