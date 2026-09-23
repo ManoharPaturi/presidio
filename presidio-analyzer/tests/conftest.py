@@ -2,7 +2,6 @@ import shutil
 from pathlib import Path
 from typing import Dict, List
 
-import os
 import pytest
 
 from presidio_analyzer import (
@@ -13,7 +12,10 @@ from presidio_analyzer import (
 )
 from presidio_analyzer import RecognizerRegistry
 from presidio_analyzer.nlp_engine import NlpEngineProvider, NlpEngine
-from presidio_analyzer.predefined_recognizers import NLP_RECOGNIZERS, PREDEFINED_RECOGNIZERS
+from presidio_analyzer.predefined_recognizers import (
+    NLP_RECOGNIZERS,
+    PREDEFINED_RECOGNIZERS,
+)
 from tests.mocks import RecognizerRegistryMock, NlpEngineMock
 
 
@@ -42,12 +44,6 @@ def nlp_engines(request, nlp_engine_provider) -> Dict[str, NlpEngine]:
             available_engines[f"{name}_en"] = engine_cls(
                 models=[{"lang_code": "en", "model_name": "en"}]
             )
-            # The German model is large; only register the engine (and run the
-            # German model tests) when explicitly opted in.
-            if os.environ.get("PRESIDIO_TEST_STANZA_DE"):
-                available_engines[f"{name}_de"] = engine_cls(
-                    models=[{"lang_code": "de", "model_name": "de"}]
-                )
         elif name == "transformers":
             available_engines[f"{name}_en"] = engine_cls(
                 models=[
@@ -94,14 +90,6 @@ def spacy_nlp_engine(nlp_engines):
 @pytest.fixture(scope="session")
 def stanza_nlp_engine(nlp_engines):
     nlp_engine = nlp_engines.get("stanza_en", None)
-    if nlp_engine:
-        nlp_engine.load()
-    return nlp_engine
-
-
-@pytest.fixture(scope="session")
-def stanza_de_nlp_engine(nlp_engines):
-    nlp_engine = nlp_engines.get("stanza_de", None)
     if nlp_engine:
         nlp_engine.load()
     return nlp_engine

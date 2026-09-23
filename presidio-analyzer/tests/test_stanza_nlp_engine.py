@@ -30,20 +30,6 @@ def stanza_pipeline():
     return nlp
 
 
-@pytest.fixture(scope="module")
-def stanza_pipeline_de(stanza_de_nlp_engine):
-    """German pipeline from the session-scoped preloaded engine.
-
-    Only registered when PRESIDIO_TEST_STANZA_DE is set; otherwise the
-    skip_engine("stanza_de") markers skip these tests. the module-scoped
-    fixture instantiates before the function-scoped skip hook, so guard
-    here too.
-    """
-    if stanza_de_nlp_engine is None:
-        pytest.skip("german stanza model not enabled (set PRESIDIO_TEST_STANZA_DE)")
-    return stanza_de_nlp_engine.nlp["de"]
-
-
 @pytest.mark.skip_engine("stanza_en")
 def test_spacy_stanza_english(stanza_pipeline):
     nlp = stanza_pipeline
@@ -202,72 +188,74 @@ def test_get_tokens_with_heads_collapses_mwt_and_remaps_heads():
     assert heads == [1, 0, 1, -2, 1, 0]
 
 
-@pytest.mark.skip_engine("stanza_de")
-def test_spacy_stanza_german_multiword_tokens(stanza_pipeline_de):
-    """Test that German multi-word tokens keep text, tokens and entities intact.
+@pytest.mark.skip_engine("stanza_en")
+def test_convert_doc_keeps_mwt_surface_text_offsets_and_entities():
+    """Test _convert_doc on a real Stanza Document with a multi-word token.
 
-    Regression test for issue #2249: German preposition-article
-    contractions are multi-word tokens (mwt) which Stanza's mwt processor
-    expands ("im" -> "in" + "dem"). Flattening the expanded words into the
-    token list used to break alignment with the original text, so the doc
-    text was replaced by space-separated expanded tokens and all entities
-    were dropped.
+    The Document is built from CoNLL-U with the real Stanza Token, Word
+    and Span classes instead of running the German model, so it runs on
+    every test run without a model download. The annotations are what the
+    German pipeline produces for the text ("im" expanded into "in" + "dem").
     """
-    text = "Wir treffen uns im B\u00fcro mit Thomas Bergmann."
+    from types import SimpleNamespace
+    from spacy.vocab import Vocab
+    from stanza.models.common.doc import Span
+    from stanza.utils.conll import CoNLL
+
+    text = "Wir treffen uns im Büro mit Thomas Bergmann."
+    conllu = "\n".join(
+        [
+            "1\tWir\twir\tPRON\tPPER\t_\t2\tnsubj\t_\tstart_char=0|end_char=3",
+            "2\ttreffen\ttreffen\tVERB\tVVFIN\t_\t0\troot\t_\tstart_char=4|end_char=11",
+            "3\tuns\tuns\tPRON\tPRF\t_\t2\tobj\t_\tstart_char=12|end_char=15",
+            "4-5\tim\t_\t_\t_\t_\t_\t_\t_\tstart_char=16|end_char=18",
+            "4\tin\tin\tADP\tAPPR\t_\t6\tcase\t_\t_",
+            "5\tdem\tder\tDET\tART\t_\t6\tdet\t_\t_",
+            "6\tBüro\tBüro\tNOUN\tNN\t_\t2\tobl\t_\tstart_char=19|end_char=23",
+            "7\tmit\tmit\tADP\tAPPR\t_\t8\tcase\t_\tstart_char=24|end_char=27",
+            "8\tThomas\tThomas\tPROPN\tNE\t_\t2\tobl\t_\tstart_char=28|end_char=34",
+            "9\tBergmann\tBergmann\tPROPN\tNE\t_\t8\tflat\t_\tstart_char=35|end_char=43",
+            "10\t.\t.\tPUNCT\t$.\t_\t2\tpunct\t_\tstart_char=43|end_char=44",
+            "",
+        ]
+    )
+    snlp_doc = CoNLL.conll2doc(input_str=conllu)
+    snlp_doc.text = text
+    sentence = snlp_doc.sentences[0]
+    snlp_doc.entities = [
+        Span(tokens=sentence.tokens[6:8], type="PER", doc=snlp_doc, sent=sentence)
+    ]
+    tokenizer = StanzaTokenizer(SimpleNamespace(processors={}), Vocab())
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        doc = stanza_pipeline_de(text)
+        doc = tokenizer._convert_doc(snlp_doc)
 
-    # The original text is preserved, not replaced by expanded tokens,
-    # and no alignment / multiword warnings are emitted
     assert doc.text == text
-    assert not [
-        warning for warning in caught if "multiword token" in str(warning.message)
-    ]
-
-    # The contraction is kept as a single token in its surface form
+    assert not [w for w in caught if "multi-word token" in str(w.message)]
     assert [t.text for t in doc] == [
         "Wir",
         "treffen",
         "uns",
         "im",
-        "B\u00fcro",
+        "Büro",
         "mit",
         "Thomas",
         "Bergmann",
         ".",
     ]
-    # ... with the surface form as its lemma ...
-    assert doc[3].lemma_ == "im"
-    # ... and annotations borrowed from the first expanded word
-    assert doc[3].pos_ in ("ADP", "APPR")
-
-    # NER entities keep the character offsets of the original text
-    expected_start = text.index("Thomas Bergmann")
-    assert len(doc.ents) == 1
-    assert doc.ents[0].text == "Thomas Bergmann"
-    assert doc.ents[0].start_char == expected_start
-    assert doc.ents[0].end_char == expected_start + len("Thomas Bergmann")
-
-
-@pytest.mark.skip_engine("stanza_de")
-def test_spacy_stanza_german_mwt_token_indices_cover_trailing_matches(
-    stanza_pipeline_de,
-):
-    """Test that tokens cover matches at the end of indented German text."""
-    # Regression test for the analyzer HTTP 500 on indented text:
-    # with a multi-word token and enough whitespace, the replaced
-    # (shorter) doc text used to end before a pattern match at the end
-    # of the original text, so LemmaContextAwareEnhancer raised
-    # "Did not find word ... in the list of tokens".
-    text = "Wir treffen uns im B\u00fcro.\n" + " " * 40 + "\nServer 192.168.10.20"
-    doc = stanza_pipeline_de(text)
-
-    assert doc.text == text
     for token in doc:
         assert doc.text[token.idx : token.idx + len(token.text)] == token.text
 
-    # a match on the trailing IP address is covered by a token, so that
-    # LemmaContextAwareEnhancer._find_index_of_match_token finds it
-    ip_start = text.index("192.168.10.20")
-    assert any(token.idx <= ip_start < token.idx + len(token.text) for token in doc)
+    # the collapsed token keeps its surface form as lemma and borrows
+    # the annotations of the first expanded word
+    assert doc[3].lemma_ == "im"
+    assert doc[3].pos_ == "ADP"
+
+    # dependency heads around the collapsed token point at the right tokens:
+    # "im" -> "Büro", "Büro" -> "treffen", "Bergmann" -> "Thomas"
+    assert [t.head.i for t in doc] == [1, 1, 1, 4, 1, 6, 1, 6, 1]
+
+    # NER entities keep the character offsets of the original text
+    assert [(e.text, e.start_char, e.end_char, e.label_) for e in doc.ents] == [
+        ("Thomas Bergmann", 28, 43, "PER")
+    ]
